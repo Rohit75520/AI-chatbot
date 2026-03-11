@@ -4,7 +4,7 @@
  * Node.js text-to-speech using the `gtts` npm module.
  */
 
-import gTTS from 'gtts';
+import * as googleTTS from 'google-tts-api';
 import { getLangCode } from '../config.js';
 
 export async function textToSpeech(text, language) {
@@ -25,26 +25,20 @@ export async function textToSpeech(text, language) {
 
     const langCode = getLangCode(language);
 
-    return new Promise((resolve, reject) => {
-        try {
-            const gtts = new gTTS(cleanText, langCode);
-            // We want to stream it just like the python version,
-            // but for Express, we can actually just pipe the stream directly,
-            // or we can buffer it first into memory if we want raw bytes.
-            // gtts stream logic:
-            const stream = gtts.stream();
-            const chunks = [];
+    try {
+        // google-tts-api handles string splitting for long strings automatically
+        const results = await googleTTS.getAllAudioBase64(cleanText, {
+            lang: langCode,
+            slow: false,
+            host: 'https://translate.google.com',
+        });
 
-            stream.on('data', chunk => chunks.push(chunk));
-            stream.on('end', () => resolve(Buffer.concat(chunks)));
-            stream.on('error', err => {
-                console.error("gTTS stream error:", err);
-                reject(new Error("Failed to generate speech audio."));
-            });
-
-        } catch (error) {
-            console.error("TTS Logic error:", error);
-            reject(new Error("Failed to start TTS engine."));
-        }
-    });
+        // The API returns an array of objects: { base64: string }
+        // We decode these Base64 audio strings securely into Buffer chunks and concat them
+        const buffers = results.map(res => Buffer.from(res.base64, 'base64'));
+        return Buffer.concat(buffers);
+    } catch (error) {
+        console.error("google-tts-api Logic error:", error);
+        throw new Error("Failed to generate speech audio.");
+    }
 }
